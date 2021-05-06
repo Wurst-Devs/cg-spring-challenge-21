@@ -63,13 +63,13 @@ class Player
                     int sort_index = 0;
                     for (int k = 0; k < sorted.Count; k++)
                     {
-                        if (size > sorted[k].size)
+                        if (tree.size > sorted[k].size)
                         {
                             sort_index = k;
                             break;
                         }
                     }
-                    trees.Insert(sort_index, new Tree(cells[cellIndex], size, isMine, isDormant));
+                    sorted.Insert(sort_index, tree);
                 }
             }
 

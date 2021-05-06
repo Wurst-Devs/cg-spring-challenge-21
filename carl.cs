@@ -58,12 +58,12 @@ class Player
                 Tree tree = new Tree(cells[cellIndex], size, isMine, isDormant);
                 trees.Add(tree);
 
-                if (isMine) 
+                if (tree.isMine && tree.size == 3) 
                 {
                     int sort_index = 0;
                     for (int k = 0; k < sorted.Count; k++)
                     {
-                        if (tree.size > sorted[k].size)
+                        if (tree.GetScore(nutrients) > sorted[k].GetScore(nutrients))
                         {
                             sort_index = k;
                             break;

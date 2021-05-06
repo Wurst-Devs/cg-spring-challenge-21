@@ -73,6 +73,8 @@ class Player
                 }
             }
 
+            sorted.Reverse();
+
             int numberOfPossibleMoves = int.Parse(Console.ReadLine());
             for (int i = 0; i < numberOfPossibleMoves; i++)
             {
@@ -86,6 +88,11 @@ class Player
 
             // GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>
 
+            for (int i = 0; i < sorted.Count; i++) {
+                Console.Error.Write(sorted[i].cell.richness);
+            }
+
+            Console.Error.WriteLine("");
             Console.Error.WriteLine("Sun: {0} | My trees: {1}", sun, sorted.Count);
 
             if (sun > 4 && sorted.Count > 0)

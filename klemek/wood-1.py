@@ -37,7 +37,7 @@ class Tree:
     def reset_count():
         Tree.count = {i:0 for i in range(4)}
 
-    def __init__(self, last_trees, cells, turn_start, *args):
+    def __init__(self, cells, *args):
         self.id = int(args[0])
         self.cell = cells[self.id] # location of this tree
         #self.cell.tree = self
@@ -46,14 +46,6 @@ class Tree:
         self.is_dormant = args[3] == "1" # 1 if this tree is dormant
         if self.is_mine:
             Tree.count[self.size] += 1
-        old_self = [tree for tree in last_trees if tree.id == self.id]
-        if len(old_self) == 0:
-            self.history = [self.size]
-        elif turn_start:
-            self.history = old_self[0].history + [self.size]
-        else:
-            self.history = old_self[0].history
-        
     
     def __repr__(self):
         if self.size == 3:
@@ -77,12 +69,6 @@ class Tree:
     @property
     def gscore(self):
         return self.cell.richness * (self.size + 1)
-    
-    @property
-    def days(self):
-        return self.history.count(self.size)
-
-
 
 # INIT
 
@@ -92,16 +78,11 @@ for cell in cells:
     cell.init(cells)
 
 MAX_DAY = 5
-GROWN_KEEP = 2
-
-trees = []
-day = -1
 
 # GAME LOOP
 while True:
-    last_day = day
     day = int(input())  # the game lasts 24 days: 0-23
-    turn_start = day != last_day
+    
     Tree.reset_count()
     Tree.nutrients = int(input())  # the base score you gain from the next COMPLETE action
 
@@ -115,8 +96,7 @@ while True:
     opp_score = int(inputs[1])  # opponent's score
     opp_is_waiting = inputs[2] != "0"  # whether your opponent is asleep until the next day
 
-    last_trees = trees
-    trees = [Tree(last_trees, cells, turn_start, *input().split()) for _ in range(int(input()))]
+    trees = [Tree(cells, *input().split()) for _ in range(int(input()))]
 
     [input() for _ in range(int(input()))]
 

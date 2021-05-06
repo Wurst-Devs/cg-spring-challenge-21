@@ -1,6 +1,5 @@
 import sys
 from types import GeneratorType
-from functools import reduce
 
 MAX_DAY = 23 # WOOD 2 => 0 / WOOD 1 => 5 / ONWARD => 23
 ALLOWED = [
@@ -8,12 +7,9 @@ ALLOWED = [
     "SEED",  # BRONZE
 ]
 
-def debug(*values, name = None, end = '\n'):
+def debug(*values, end = '\n'):
     values = [tuple(v) if isinstance(v, GeneratorType) else v for v in values]
-    if name is not None: print(f"{name} =", *values, file=sys.stderr, end=end, flush=True)
-    else: print(*values, file=sys.stderr, end=end, flush=True)
-    if len(values) == 1: return values[0]
-    return tuple(values)
+    print(*values, file=sys.stderr, end=end, flush=True)
 
 # CLASSES
 

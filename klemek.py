@@ -4,8 +4,8 @@ from functools import reduce
 
 MAX_DAY = 23 # WOOD 2 => 0 / WOOD 1 => 5
 ALLOWED = [
-    'GROW',  # WOOD 1
-    'SEED',  # BRONZE
+    "GROW",  # WOOD 1
+    "SEED",  # BRONZE
 ]
 
 def debug(*values, name = None, end = '\n'):
@@ -163,7 +163,7 @@ while True:
 
     if len(completable) > 0 and sun >= 4:
         print("COMPLETE", completable[0].id)
-    elif day != MAX_DAY and len(growable) > 0 and len(dormant) == 0 and not should_not_grow:
+    elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0 and len(dormant) == 0 and not should_not_grow:
         print("GROW", growable[0].id)
     else:
         # GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>

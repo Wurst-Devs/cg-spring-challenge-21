@@ -8,12 +8,15 @@ using System.Collections.Generic;
 
 class Player
 {
+    public const int MAX_DAY = 23;
+    public const int CELL_COUNT = 37;
+
     static void Main(string[] args)
     {
         string[] inputs;
         int numberOfCells = int.Parse(Console.ReadLine());
 
-        Cell[] cells = new Cell[37];
+        Cell[] cells = new Cell[CELL_COUNT];
 
         for (int i = 0; i < numberOfCells; i++)
         {
@@ -31,9 +34,15 @@ class Player
             cells[i] = new Cell(index, richness, neighbors);
         }
 
+        List<Tree> trees = new List<Tree>();
+        int day = -1;
+
         while (true)
         {
-            int day = int.Parse(Console.ReadLine()); // the game lasts 24 days: 0-23
+            int lastDay = day;
+            day = int.Parse(Console.ReadLine()); // the game lasts 24 days: 0-23
+            int sunDir = day % 6;
+            bool turnStart = day != lastDay;
             int nutrients = int.Parse(Console.ReadLine()); // the base score you gain from the next COMPLETE action
             inputs = Console.ReadLine().Split(' ');
             int sun = int.Parse(inputs[0]); // your sun points
@@ -43,14 +52,15 @@ class Player
             int oppScore = int.Parse(inputs[1]); // opponent's score
             bool oppIsWaiting = inputs[2] != "0"; // whether your opponent is asleep until the next day
             int numberOfTrees = int.Parse(Console.ReadLine()); // the current amount of trees
-            
-            List<Tree> trees = new List<Tree>();
+
+            List<Tree> lastTrees = trees;
+            trees = new List<Tree>();
             List<Tree> available = new List<Tree>();
             List<Tree> myTrees = new List<Tree>();
             List<Tree> oppTrees = new List<Tree>();
             List<Tree> completable = new List<Tree>();
             List<Tree> growable = new List<Tree>();
-            List<Tree> growable_next = new List<Tree>();
+            List<Tree> seeding = new List<Tree>();
 
             int next_sun = sun;
             int[] myCount = new int[4];
@@ -64,7 +74,7 @@ class Player
                 bool isMine = inputs[2] != "0"; // 1 if this is your tree
                 bool isDormant = inputs[3] != "0"; // 1 if this tree is dormant
 
-                Tree tree = new Tree(cells[cellIndex], size, isMine, isDormant);
+                Tree tree = new Tree(cells[cellIndex], size, isMine, isDormant, lastTrees, turnStart, sunDir);
                 trees.Add(tree);
 
                 if (tree.isMine)
@@ -82,26 +92,24 @@ class Player
 
             foreach (Tree tree in available)
             {
-                if (tree.size == 3)
+                if (tree.size == 3 && (tree.GetDays() > tree.GetMaxDays() || day == MAX_DAY))
                 { 
                     completable.Add(tree); 
                 }
                 else 
                 {
-                    if (sun >= tree.GetPrice(state))        { growable.Add(tree); }
-                    if (next_sun >= tree.GetPrice(state))   { growable_next.Add(tree); }
+                    if (sun >= tree.GetPrice(state))    { growable.Add(tree); }
+                    if (tree.CanSeed())                 { seeding.Add(tree); }
                 }
             }
 
             completable = completable.OrderBy(o=>o.GetROI(state)).ToList();
             growable = growable.OrderBy(o=>o.GetROI(state)).ToList();
-            growable_next = growable_next.OrderBy(o=>o.GetROI(state)).ToList();
+            seeding = seeding.OrderBy(o=>o.seedable[0].richness).ToList();
 
             completable.Reverse();
             growable.Reverse();
-            growable_next.Reverse();
-
-            bool shouldNotGrow = growable_next.Count > 0 && growable.Count > 0 && growable_next[0].GetROI(state) > growable[0].GetROI(state);
+            seeding.Reverse();
 
             int numberOfPossibleMoves = int.Parse(Console.ReadLine());
             for (int i = 0; i < numberOfPossibleMoves; i++)
@@ -116,9 +124,13 @@ class Player
             {
                 Console.WriteLine("COMPLETE {0}", completable[0].cell.index);
             } 
-            else if (day != 5 && growable.Count > 0 && !shouldNotGrow)
+            else if (day != MAX_DAY && growable.Count > 0)
             {
                 Console.WriteLine("GROW {0}", growable[0].cell.index);
+            }
+            else if (seeding.Count > 0 && sun >= state.me.treeCount[0])
+            {
+                Console.WriteLine("SEED {0} {1}", seeding[0].cell.index, seeding[0].seedable[0].index);
             }
             else
             {
@@ -160,13 +172,85 @@ class Cell
 {
     public int index;
     public int richness;
-    public int[] neighbors;
+    public int[] neighborIDs;
+    public List<Cell> neighbors;
+    public Tree tree;
+    public int shadow;
+    public int nextShadow;
 
-    public Cell(int index, int richness, int[] neighbors)
+    public Cell(int index, int richness, int[] neighborIDs)
     {
         this.index = index;
         this.richness = richness;
-        this.neighbors = neighbors;
+        this.neighborIDs = neighborIDs;
+
+        tree = null;
+        shadow = 0;
+        nextShadow = 0;
+    }
+
+    public void Init(Cell[] cells)
+    {
+        neighbors = new List<Cell>();
+
+        foreach (int i in neighborIDs) 
+        {
+            if (i >= 0) { neighbors.Add(cells[i]); }
+            else { neighbors.Add(null); }
+        }
+    }
+
+    public bool HasTree()
+    {
+        return !(tree is null);
+    }
+
+    public void reset()
+    {
+        tree = null;
+        shadow = 0;
+        nextShadow = 0;
+    }
+
+    public void update(int sunDir, Tree tree)
+    {
+        this.tree = tree;
+        int remaining = tree.size;
+        Cell target = neighbors[sunDir];
+
+        while (!(target is null) && (remaining > 0))
+        {
+            target.shadow = Math.Max(target.shadow, tree.size);
+            target = target.neighbors[sunDir];
+            remaining--;
+        }
+
+        remaining = tree.size;
+        target = neighbors[(sunDir + 1) % 6];
+
+        while (!(target is null) && (remaining > 0))
+        {
+            target.nextShadow = Math.Max(target.nextShadow, tree.size);
+            target = target.neighbors[(sunDir + 1) % 6];
+            remaining--;
+        }
+    }
+
+    public List<Cell> area(int size, List<Cell> included)
+    {
+        if (size < 0) { return new List<Cell>(); }
+
+        List<Cell> output = new List<Cell>();
+        foreach (Cell neighbor in neighbors)
+        {
+            if (!(neighbor is null) && !included.Contains(neighbor))
+            {
+                included.Add(neighbor);
+                output.Add(neighbor);
+                output = output.Concat(neighbor.area(size - 1, included)).ToList();
+            }
+        }
+        return output;
     }
 }
 
@@ -176,13 +260,37 @@ class Tree
     public int size;
     public bool isMine;
     public bool isDormant;
+    public List<Cell> seedable;
+    public List<int> history;
 
-    public Tree(Cell cell, int size, bool isMine, bool isDormant)
+    public Tree(Cell cell, int size, bool isMine, bool isDormant, List<Tree> lastTrees, bool turnStart, int sunDir)
     {
         this.cell = cell;
         this.size = size;
         this.isMine = isMine;
         this.isDormant = isDormant;
+
+        this.cell.update(sunDir, this);
+        seedable = null;
+
+        history = new List<int>();
+        List<Tree> oldSelf = new List<Tree>();
+        foreach (Tree tree in lastTrees) { if (tree.cell.index == this.cell.index) { oldSelf.Add(tree); }}
+
+        if (oldSelf.Count == 0) 
+        { 
+            history.Add(this.size); 
+        }
+        else if (turnStart) 
+        {
+            history.Concat(oldSelf[0].history);
+            history.Add(this.size);
+        }
+        else
+        {
+            history.Concat(oldSelf[0].history);
+        }
+
     }
 
     public int GetScore(int nutrients)
@@ -201,9 +309,59 @@ class Tree
         }
     }
 
+    public int GetGScore()
+    {
+        return cell.richness + (size + 1) * 10;
+    }
+
+    public int GetDays()
+    {
+        return history.Count(o => o == size);
+    }
+
+    public int GetMaxDays()
+    {
+        return (3 - cell.richness) * 4 + 1;
+    }
+
+    public int GetNextSun()
+    {
+        return cell.nextShadow < size ? size : 0;
+    }
+
     public double GetROI(GameState state)
     {
         return Math.Pow(cell.richness + 1, 2) / GetPrice(state);
+    }
+
+    public List<Cell> GetSeedable()
+    {
+        if (!(seedable is null))
+        {
+            if (size == 0)
+            {
+                seedable = new List<Cell>();
+            }
+            else
+            {
+                List<Cell> area = cell.area(size, new List<Cell>());
+                seedable = new List<Cell>();
+
+                foreach (Cell cell in area)
+                {
+                    if (!cell.HasTree() && cell.richness > 0) { seedable.Add(cell); }
+                }
+
+                seedable = seedable.OrderBy(c=>c.richness).ToList();
+                seedable.Reverse();
+            }
+        }
+        return seedable;
+    }
+
+    public bool CanSeed()
+    {
+        return size > 0 && seedable.Count > 0;
     }
 }
 

@@ -168,7 +168,6 @@ while True:
 
     for cell in cells:
         cell.reset()
-
     
     last_trees = trees
     trees = [Tree(cells, last_trees, turn_start, sun_dir, *input().split()) for _ in range(int(input()))]
@@ -206,7 +205,7 @@ while True:
         print("COMPLETE", completable[0].id)
     elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0:
         print("GROW", growable[0].id)
-    elif "SEED" in ALLOWED and len(seeding) > 0 and sun >= Tree.count[0]:
+    elif "SEED" in ALLOWED and day != MAX_DAY and len(seeding) > 0 and sun >= Tree.count[0]:
         print("SEED", seeding[0].id, seeding[0].seedable[0].id)
     else:
         # GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>

@@ -45,7 +45,16 @@ class Player
             int numberOfTrees = int.Parse(Console.ReadLine()); // the current amount of trees
             
             List<Tree> trees = new List<Tree>();
-            List<Tree> sorted = new List<Tree>();
+            List<Tree> available = new List<Tree>();
+            List<Tree> myTrees = new List<Tree>();
+            List<Tree> oppTrees = new List<Tree>();
+            List<Tree> completable = new List<Tree>();
+            List<Tree> growable = new List<Tree>();
+            List<Tree> growable_next = new List<Tree>();
+
+            int next_sun = sun;
+            int[] myCount = new int[4];
+            int[] oppCount = new int[4];
 
             for (int i = 0; i < numberOfTrees; i++)
             {
@@ -58,22 +67,41 @@ class Player
                 Tree tree = new Tree(cells[cellIndex], size, isMine, isDormant);
                 trees.Add(tree);
 
-                if (tree.isMine && tree.size == 3) 
+                if (tree.isMine)
                 {
-                    int sort_index = 0;
-                    for (int k = 0; k < sorted.Count; k++)
-                    {
-                        if (tree.GetScore(nutrients) > sorted[k].GetScore(nutrients))
-                        {
-                            sort_index = k;
-                            break;
-                        }
-                    }
-                    sorted.Insert(sort_index, tree);
+                    myTrees.Add(tree);
+                    next_sun += tree.size;
+
+                    if (!tree.isDormant) { available.Add(tree); }
+                } else { oppTrees.Add(tree); }
+            }
+
+            Spirit me = new Spirit(sun, score, myTrees, false);
+            Spirit opp = new Spirit(oppSun, oppScore, oppTrees, oppIsWaiting);
+            GameState state = new GameState(day, nutrients, numberOfTrees, cells, trees, me, opp);
+
+            foreach (Tree tree in available)
+            {
+                if (tree.size == 3)
+                { 
+                    completable.Add(tree); 
+                }
+                else 
+                {
+                    if (sun >= tree.GetPrice(state))        { growable.Add(tree); }
+                    if (next_sun >= tree.GetPrice(state))   { growable_next.Add(tree); }
                 }
             }
 
-            sorted.Reverse();
+            completable = completable.OrderBy(o=>o.GetROI(state)).ToList();
+            growable = growable.OrderBy(o=>o.GetROI(state)).ToList();
+            growable_next = growable_next.OrderBy(o=>o.GetROI(state)).ToList();
+
+            completable.Reverse();
+            growable.Reverse();
+            growable_next.Reverse();
+
+            bool shouldNotGrow = growable_next.Count > 0 && growable.Count > 0 && growable_next[0].GetROI(state) > growable[0].GetROI(state);
 
             int numberOfPossibleMoves = int.Parse(Console.ReadLine());
             for (int i = 0; i < numberOfPossibleMoves; i++)
@@ -81,24 +109,17 @@ class Player
                 string possibleMove = Console.ReadLine();
             }
 
-            Spirit[] players = {new Spirit(sun, score, false), new Spirit(oppSun, oppScore, oppIsWaiting)};
-            GameState state = new GameState(day, nutrients, numberOfTrees, cells, trees, players);
-
             // To debug: Console.Error.WriteLine("Debug messages...");
 
             // GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>
-
-            for (int i = 0; i < sorted.Count; i++) {
-                Console.Error.Write(sorted[i].cell.richness);
-            }
-
-            Console.Error.WriteLine("");
-            Console.Error.WriteLine("Sun: {0} | My trees: {1}", sun, sorted.Count);
-
-            if (sun > 4 && sorted.Count > 0)
+            if (completable.Count > 0 && sun >= 4)
             {
-                Console.WriteLine("COMPLETE {0}", sorted[0].cell.index);
+                Console.WriteLine("COMPLETE {0}", completable[0].cell.index);
             } 
+            else if (day != 5 && growable.Count > 0 && !shouldNotGrow)
+            {
+                Console.WriteLine("GROW {0}", growable[0].cell.index);
+            }
             else
             {
                 Console.WriteLine("WAIT");
@@ -115,16 +136,18 @@ class GameState
     public int numberOfTrees;
     public Cell[] map;
     public List<Tree> trees;
-    public Spirit[] players;
-    
-    public GameState(int day, int nutrients, int numberOfTrees, Cell[] map, List<Tree> trees, Spirit[] players)
+    public Spirit me;
+    public Spirit opp;
+
+    public GameState(int day, int nutrients, int numberOfTrees, Cell[] map, List<Tree> trees, Spirit me, Spirit opp)
     {
         this.day = day;
         this.nutrients = nutrients;
         this.numberOfTrees = numberOfTrees;
         this.map = map;
         this.trees = trees;
-        this.players = players;
+        this.me = me;
+        this.opp = opp;
     }
 
     public List<Action> PossibleMoves()
@@ -166,6 +189,22 @@ class Tree
     {
         return size == 3 ? nutrients + (2 * (cell.richness - 1)) : 0;
     }
+
+    public int GetPrice(GameState state)
+    {
+        if (size == 1) {
+            return 3 + state.me.treeCount[2];
+        } else if (size == 2) {
+            return 7 + state.me.treeCount[3];
+        } else {
+            return 0;
+        }
+    }
+
+    public double GetROI(GameState state)
+    {
+        return Math.Pow(cell.richness + 1, 2) / GetPrice(state);
+    }
 }
 
 class Spirit
@@ -173,12 +212,21 @@ class Spirit
     public int sun;
     public int score;
     public bool isWaiting;
+    public List<Tree> trees;
+    public int[] treeCount;
 
-    public Spirit(int sun, int score, bool isWaiting)
+    public Spirit(int sun, int score, List<Tree> trees, bool isWaiting)
     {
         this.sun = sun;
         this.score = score;
+        this.trees = trees;
         this.isWaiting = isWaiting;
+
+        treeCount = new int[4];
+        foreach (Tree tree in this.trees)
+        {
+            treeCount[tree.size] += 1;
+        }
     }
 }
 

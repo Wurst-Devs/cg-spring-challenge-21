@@ -106,7 +106,7 @@ class Tree:
 
     @property
     def gscore(self):
-        return self.cell.richness * (self.size + 1)
+        return self.cell.richness + (self.size + 1) * 10
     
     @property
     def days(self):
@@ -114,7 +114,7 @@ class Tree:
     
     @property
     def max_days(self):
-        return 4 - self.cell.richness
+        return (3 - self.cell.richness) * 4 + 1
 
     @property
     def next_sun(self):
@@ -127,7 +127,6 @@ class Tree:
                 self.__seedable = []
             else:
                 area = self.cell.area(self.size, [])
-                debug(self, area)
                 self.__seedable = sorted(
                     (cell for cell in area if not cell.has_tree and cell.richness > 0),
                     key=lambda cell:cell.richness,
@@ -187,6 +186,8 @@ while True:
     completable = [tree for tree in available if tree.size == 3 and (tree.days > tree.max_days or day == MAX_DAY)]
     completable.sort(key=lambda tree:tree.score, reverse=True)
 
+    debug("completable", completable)
+
     # grow
 
     growable = [tree for tree in available if tree.size != 3 and sun >= tree.price]
@@ -205,7 +206,7 @@ while True:
         print("COMPLETE", completable[0].id)
     elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0:
         print("GROW", growable[0].id)
-    elif "SEED" in ALLOWED and len(seeding) > 0:
+    elif "SEED" in ALLOWED and len(seeding) > 0 and sun >= Tree.count[0]:
         print("SEED", seeding[0].id, seeding[0].seedable[0].id)
     else:
         # GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>

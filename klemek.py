@@ -113,6 +113,10 @@ class Tree:
         return self.history.count(self.size)
     
     @property
+    def max_days(self):
+        return 4 - self.cell.richness
+
+    @property
     def next_sun(self):
         return self.size if self.cell.next_shadow < self.size else 0
     
@@ -180,7 +184,7 @@ while True:
 
     # complete
 
-    completable = [tree for tree in available if tree.size == 3 and tree.days > 1]
+    completable = [tree for tree in available if tree.size == 3 and (tree.days > tree.max_days or day == MAX_DAY)]
     completable.sort(key=lambda tree:tree.score, reverse=True)
 
     # grow

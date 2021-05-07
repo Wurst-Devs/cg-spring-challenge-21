@@ -53,8 +53,8 @@ class Cell:
             target = target.neighbors[(sun_dir + 1) % 6]
             remaining -= 1
     
-    def area(self, size, included = []):
-        if size == 0:
+    def area(self, size, included):
+        if size < 0:
             return []
         output = []
         for neighbor in self.neighbors:
@@ -71,7 +71,7 @@ class Tree:
     def reset_count():
         Tree.count = {i:0 for i in range(4)}
 
-    def __init__(self, cells, sun_dir, *args):
+    def __init__(self, cells, last_trees, turn_start, sun_dir, *args):
         self.id = int(args[0])
         self.cell = cells[self.id]
         self.size = int(args[1])
@@ -81,6 +81,14 @@ class Tree:
             Tree.count[self.size] += 1
         self.cell.update(sun_dir, self)
         self.__seedable = None
+        old_self = [tree for tree in last_trees if tree.id == self.id]
+        if len(old_self) == 0:
+            self.history = [self.size]
+        elif turn_start:
+            self.history = old_self[0].history + [self.size]
+        else:
+            self.history = old_self[0].history
+            
         
     def __repr__(self):
         if self.size == 3:
@@ -114,7 +122,8 @@ class Tree:
             if self.size == 0:
                 self.__seedable = []
             else:
-                area = self.cell.area(self.size)
+                area = self.cell.area(self.size, [])
+                debug(self, area)
                 self.__seedable = sorted(
                     (cell for cell in area if not cell.has_tree and cell.richness > 0),
                     key=lambda cell:cell.richness,
@@ -136,6 +145,7 @@ for cell in cells:
     cell.init(cells)
 
 day = -1
+trees = []
 
 # GAME LOOP
 while True:
@@ -156,7 +166,9 @@ while True:
     for cell in cells:
         cell.reset()
 
-    trees = [Tree(cells, sun_dir, *input().split()) for _ in range(int(input()))]
+    
+    last_trees = trees
+    trees = [Tree(cells, last_trees, turn_start, sun_dir, *input().split()) for _ in range(int(input()))]
 
     [input() for _ in range(int(input()))]  # possible actions ignored
 
@@ -168,36 +180,26 @@ while True:
 
     # complete
 
-    completable = [tree for tree in available if tree.size == 3]
+    completable = [tree for tree in available if tree.size == 3 and tree.days > 1]
     completable.sort(key=lambda tree:tree.score, reverse=True)
 
     # grow
 
     growable = [tree for tree in available if tree.size != 3 and sun >= tree.price]
-    growable.sort(key=lambda tree:tree.size, reverse=True)
+    growable.sort(key=lambda tree:tree.gscore, reverse=True)
 
     debug("growable", growable)
-
-    next_sun = sun + sum([tree.next_sun for tree in mine])
-
-    growable_next = [tree for tree in mine if tree.size != 3 and next_sun >= tree.price]
-    growable_next.sort(key=lambda tree:tree.gscore, reverse=True)
-
-    debug("growable_next", next_sun, growable_next)
-
-    should_not_grow = (
-        len(growable_next) > 0 and len(growable) > 0 and
-        growable_next[0].gscore > growable[0].gscore
-    )
 
     # seed
 
     seeding = [tree for tree in available if tree.can_seed]
     seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
 
+    debug("seeding", seeding)
+
     if len(completable) > 0 and sun >= 4:
         print("COMPLETE", completable[0].id)
-    elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0 and len(dormant) == 0 and not should_not_grow:
+    elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0:
         print("GROW", growable[0].id)
     elif "SEED" in ALLOWED and len(seeding) > 0:
         print("SEED", seeding[0].id, seeding[0].seedable[0].id)

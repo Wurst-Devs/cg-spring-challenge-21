@@ -114,7 +114,7 @@ class Tree:
     
     @property
     def max_days(self):
-        return (3 - self.cell.richness) * 4 + 1
+        return {1:26, 2:10, 3:1}[self.cell.richness]
 
     @property
     def next_sun(self):
@@ -177,9 +177,11 @@ while True:
 
     mine = [tree for tree in trees if tree.is_mine]
     available = [tree for tree in mine if not tree.is_dormant]
-    dormant = [tree for tree in mine if tree.is_dormant]
 
     debug("mine", mine)
+
+    # trees to be cut one day (size 3, richness > 1)
+    real_sun = sun - len([tree for tree in mine if tree.size == 3 and tree.cell.richness > 1]) * 4
 
     # complete
 
@@ -190,7 +192,7 @@ while True:
 
     # grow
 
-    growable = [tree for tree in available if tree.size != 3 and sun >= tree.price]
+    growable = [tree for tree in available if tree.size != 3 and real_sun >= tree.price]
     growable.sort(key=lambda tree:tree.gscore, reverse=True)
 
     debug("growable", growable)
@@ -206,7 +208,7 @@ while True:
         print("COMPLETE", completable[0].id)
     elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0:
         print("GROW", growable[0].id)
-    elif "SEED" in ALLOWED and len(seeding) > 0 and sun >= Tree.count[0]:
+    elif "SEED" in ALLOWED and len(seeding) > 0 and real_sun >= Tree.count[0]:
         print("SEED", seeding[0].id, seeding[0].seedable[0].id)
     else:
         # GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>

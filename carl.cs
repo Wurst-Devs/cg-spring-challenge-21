@@ -34,6 +34,11 @@ class Player
             cells[i] = new Cell(index, richness, neighbors);
         }
 
+        foreach (Cell cell in cells)
+        {
+            cell.Init(cells);
+        }
+
         List<Tree> trees = new List<Tree>();
         int day = -1;
 
@@ -361,7 +366,7 @@ class Tree
 
     public bool CanSeed()
     {
-        return size > 0 && seedable.Count > 0;
+        return size > 0 && GetSeedable().Count > 0;
     }
 }
 

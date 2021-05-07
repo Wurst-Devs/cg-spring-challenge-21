@@ -98,18 +98,21 @@ class Player
             foreach (Tree tree in available)
             {
                 if (tree.size == 3 && (tree.GetDays() > tree.GetMaxDays() || day == MAX_DAY))
-                { 
+                {
                     completable.Add(tree); 
                 }
                 else 
                 {
-                    if (sun >= tree.GetPrice(state))    { growable.Add(tree); }
-                    if (tree.CanSeed())                 { seeding.Add(tree); }
+                    if (tree.size != 3)    
+                    {
+                        if (sun >= tree.GetPrice(state)) { growable.Add(tree); }
+                    }
+                    if (tree.CanSeed()) { seeding.Add(tree); }
                 }
             }
 
-            completable = completable.OrderBy(o=>o.GetROI(state)).ToList();
-            growable = growable.OrderBy(o=>o.GetROI(state)).ToList();
+            completable = completable.OrderBy(o=>o.GetScore(state)).ToList();
+            growable = growable.OrderBy(o=>o.GetGScore()).ToList();
             seeding = seeding.OrderBy(o=>o.seedable[0].richness).ToList();
 
             completable.Reverse();
@@ -288,30 +291,23 @@ class Tree
         }
         else if (turnStart) 
         {
-            history.Concat(oldSelf[0].history);
+            history = history.Concat(oldSelf[0].history).ToList();
             history.Add(this.size);
         }
         else
         {
-            history.Concat(oldSelf[0].history);
+            history = history.Concat(oldSelf[0].history).ToList();
         }
-
     }
 
-    public int GetScore(int nutrients)
+    public int GetScore(GameState state)
     {
-        return size == 3 ? nutrients + (2 * (cell.richness - 1)) : 0;
+        return state.nutrients + (2 * (cell.richness - 1));
     }
 
-    public int GetPrice(GameState state)
+    public double GetPrice(GameState state)
     {
-        if (size == 1) {
-            return 3 + state.me.treeCount[2];
-        } else if (size == 2) {
-            return 7 + state.me.treeCount[3];
-        } else {
-            return 0;
-        }
+        return Math.Pow(2, size + 1) - 1 + state.me.treeCount[size + 1];
     }
 
     public int GetGScore()
@@ -341,7 +337,7 @@ class Tree
 
     public List<Cell> GetSeedable()
     {
-        if (!(seedable is null))
+        if (seedable is null)
         {
             if (size == 0)
             {

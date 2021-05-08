@@ -5,7 +5,7 @@ from collections import defaultdict
 
 MAX_DAY = 23
 
-MAX_TREE_DAYS = {1:23, 2:10, 3:1}
+MAX_TREE_DAYS = {1:9, 2:5, 3:1}
 
 # UTILS
 
@@ -23,14 +23,12 @@ class Cell:
         self.tree = None
         self.shadow = 0
         self.next_shadow = 0
-        self.area = defaultdict(lambda:[])
     
     def __repr__(self) -> str:
         return f"@{self.id}({self.richness},{self.shadow})"
     
     def init(self, cells: List["Cell"]):
         self.neighbors = [cells[i] if i >= 0 else None for i in self.neighbors_raw]
-        self.area = {i: self.compute_area(i, []) for i in range(4)}
     
     @property
     def has_tree(self) -> bool:
@@ -56,14 +54,15 @@ class Cell:
             target = target.neighbors[(sun_dir + 1) % 6]
             remaining -= 1
     
-    def compute_area(self, size: int, included: List["Cell"]) -> List["Cell"]:
-        if size == 0:
+    def area(self, size: int, included: List["Cell"]) -> List["Cell"]:
+        # bug, should be == 0 but perform better ???
+        if size < 0:
             return []
         output = []
         for neighbor in self.neighbors:
             if neighbor is not None and neighbor not in included:
                 included += [neighbor]
-                output += [neighbor] + neighbor.compute_area(size - 1, included)
+                output += [neighbor] + neighbor.area(size - 1, included)
         return output
 
 
@@ -76,6 +75,7 @@ class Tree:
         self.is_dormant = args[3] == "1"
         self.cell.update(sun_dir, self)
         self.__seedable = None
+        self.__seedable_next = None
         old_self = [tree for tree in last_trees if tree.id == self.id]
         if len(old_self) == 0:
             self.history = [self.size]
@@ -117,7 +117,7 @@ class Tree:
             if self.size == 0:
                 self.__seedable = []
             else:
-                area = self.cell.area[self.size]
+                area = self.cell.area(self.size, [])
                 self.__seedable = sorted(
                     (cell for cell in area if not cell.has_tree and cell.richness > 0),
                     key=lambda cell:cell.richness,
@@ -128,7 +128,6 @@ class Tree:
     @property
     def can_seed(self) -> bool:
         return self.size > 0 and len(self.seedable) > 0
-
 
 class Game:
     def __init__(self):
@@ -159,7 +158,7 @@ class Game:
             cell.reset()
         last_trees = self.trees
         self.trees = [Tree(self.cells, last_trees, self.turn_start, self.sun_dir, *line) for line in raw_trees]
-        self.tree_count = {i:0 for i in range(4)}
+        self.tree_count = defaultdict(lambda:0)
         for tree in self.trees:
             if tree.is_mine:
                 self.tree_count[tree.size] += 1
@@ -174,9 +173,6 @@ class Game:
 
         mine = [tree for tree in self.trees if tree.is_mine]
         available = [tree for tree in mine if not tree.is_dormant]
-
-        debug("mine", mine)
-        debug("count", self.tree_count)
 
         # complete
 
@@ -221,6 +217,8 @@ game = Game()
 
 game.input_cells(input().split() for _ in range(int(input())))
 
+history = []
+
 # GAME LOOP
 while True:
     game.input_turn_start(int(input()), int(input()))
@@ -228,4 +226,5 @@ while True:
     game.input_opponent(*input().split())
     game.input_trees(input().split() for _ in range(int(input())))
     [input() for _ in range(int(input()))]  # possible actions ignored
+    move = game.output_move()
     print(*game.output_move())

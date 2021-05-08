@@ -103,7 +103,7 @@ class Tree:
     
     @property
     def max_days(self) -> int:
-        return MAX_TREE_DAYS[self.cell.richness]
+        return (3 - self.cell.richness) * 4 + 1 #MAX_TREE_DAYS[self.cell.richness]
 
     @property
     def next_sun(self) -> int:
@@ -132,7 +132,6 @@ class Game:
     def __init__(self):
         self.day = -1
         self.trees = []
-        self.booked = []
     
     def input_cells(self, raw_cells: List[List[str]]):
         self.cells = [Cell(*line) for line in raw_cells]
@@ -166,65 +165,49 @@ class Game:
         return pow(2, tree.size + 1) - 1 + self.tree_count[tree.size + 1]
 
     def output_move(self):
+        if self.turn_start:
+            self.grow_count = 0
+            self.seed_count = 0
+
         mine = [tree for tree in self.trees if tree.is_mine]
         available = [tree for tree in mine if not tree.is_dormant]
 
-        if self.turn_start:
-            self.moves = []
-            self.booked = []
-            self.rem_sun = self.sun
+        # complete
 
-            debug("mine", mine)
+        completable = [tree for tree in available if tree.grown and (tree.days > tree.max_days or self.day == MAX_DAY)]
+        completable.sort(key=lambda tree:tree.cell.richness, reverse=True)
 
-            # complete
+        debug("completable", completable)
 
-            completable = [tree for tree in available if tree.grown and (tree.days > tree.max_days or self.day == MAX_DAY)]
-            completable.sort(key=lambda tree:tree.cell.richness, reverse=True)
+        if len(completable) > 0 and self.sun >= 4:
+            return "COMPLETE", completable[0].id
 
-            debug("completable", completable)
-
-            while self.rem_sun >= 4 and len(completable) > 0:
-                self.rem_sun -= 4
-                self.booked += [completable[0].id]
-                self.moves += [("COMPLETE", completable.pop(0).id)]
-
-            if self.day != MAX_DAY:
+        if self.day != MAX_DAY:
+            if self.grow_count < 5:
                 # grow
 
-                growable = [tree for tree in available if not tree.grown and self.rem_sun >= self.price(tree)]
+                growable = [tree for tree in available if not tree.grown and self.sun >= self.price(tree)]
                 growable.sort(key=lambda tree:tree.gscore, reverse=True)
 
                 debug("growable", growable)
 
-                grow_count = 0
+                if len(growable) > 0:
+                    self.grow_count += 1
+                    return "GROW", growable[0].id
 
-                while len(growable) > 0 and self.rem_sun >= self.price(growable[0]) + (self.tree_count[0] if grow_count > 1 else 0):
-                    self.rem_sun -= self.price(growable[0])
-                    self.booked += [growable[0].id]
-                    grow_count += 1
-                    self.moves += [("GROW", growable.pop(0).id)]
-                
-            debug("booked", self.booked)
-            debug("rem_sun", self.rem_sun)
+            if self.seed_count < 3 and self.day > 0:
+                # seed
 
-        available = [tree for tree in available if not tree.id in self.booked]
+                seeding = [tree for tree in available if tree.can_seed]
+                seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
 
-        # seed
+                debug("seeding", seeding)
 
-        seeding = [tree for tree in available if tree.can_seed]
-        seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
+                if len(seeding) > 0 and self.sun >= self.tree_count[0]:
+                    self.seed_count += 1
+                    return "SEED", seeding[0].id, seeding[0].seedable[0].id
 
-        debug("seeding", seeding)
-
-        debug("moves", self.moves)
-
-        if self.day != MAX_DAY and len(seeding) > 0 and self.rem_sun >= self.tree_count[0]:
-            self.rem_sun -= self.tree_count[0]
-            return "SEED", seeding[0].id, seeding[0].seedable[0].id
-        elif len(self.moves) > 0:
-            return self.moves.pop(0)
-        else:
-            return "WAIT", "würst"
+        return "WAIT", "würst"
 
 
 

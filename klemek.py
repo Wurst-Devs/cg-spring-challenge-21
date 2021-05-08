@@ -5,7 +5,7 @@ from collections import defaultdict
 
 MAX_DAY = 23
 
-MAX_TREE_DAYS = {1:MAX_DAY, 2:10, 3:1}
+MAX_TREE_DAYS = {1:23, 2:10, 3:1}
 
 # UTILS
 
@@ -76,7 +76,6 @@ class Tree:
         self.is_dormant = args[3] == "1"
         self.cell.update(sun_dir, self)
         self.__seedable = None
-        self.__seedable_next = None
         old_self = [tree for tree in last_trees if tree.id == self.id]
         if len(old_self) == 0:
             self.history = [self.size]
@@ -106,7 +105,7 @@ class Tree:
     
     @property
     def max_days(self) -> int:
-        return (3 - self.cell.richness) * 4 + 1 #MAX_TREE_DAYS[self.cell.richness]
+        return MAX_TREE_DAYS[self.cell.richness]
 
     @property
     def next_sun(self) -> int:
@@ -127,26 +126,8 @@ class Tree:
         return self.__seedable
     
     @property
-    def seedable_next(self) -> List[Cell]:
-        if self.__seedable_next is None:
-            if self.size == 0:
-                self.__seedable_next = []
-            elif self.size == 3:
-                self.__seedable_next = self.seedable
-            else:
-                area = self.cell.area[self.size + 1]
-                self.__seedable_next = sorted(
-                    (cell for cell in area if not cell.has_tree and cell.richness > 0),
-                    key=lambda cell:cell.richness,
-                    reverse=True
-                )
-        return self.__seedable_next
-    
-    @property
     def can_seed(self) -> bool:
-        # do not seed if next has better seedable (firstly caused by bug in .area)
-        return self.size > 0 and len(self.seedable) > 0 and len(self.seedable_next) > 0 and self.seedable_next[0].richness <= self.seedable[0].richness
-
+        return self.size > 0 and len(self.seedable) > 0
 
 class Game:
     def __init__(self):
@@ -177,9 +158,10 @@ class Game:
             cell.reset()
         last_trees = self.trees
         self.trees = [Tree(self.cells, last_trees, self.turn_start, self.sun_dir, *line) for line in raw_trees]
-        self.tree_count = defaultdict(lambda:0)
+        self.tree_count = {i:0 for i in range(4)}
         for tree in self.trees:
-            self.tree_count[tree.size] += 1
+            if tree.is_mine:
+                self.tree_count[tree.size] += 1
     
     def price(self, tree: Tree):
         return pow(2, tree.size + 1) - 1 + self.tree_count[tree.size + 1]
@@ -191,6 +173,9 @@ class Game:
 
         mine = [tree for tree in self.trees if tree.is_mine]
         available = [tree for tree in mine if not tree.is_dormant]
+
+        debug("mine", mine)
+        debug("count", self.tree_count)
 
         # complete
 

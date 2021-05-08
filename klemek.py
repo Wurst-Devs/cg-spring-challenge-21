@@ -129,6 +129,7 @@ class Tree:
     def can_seed(self) -> bool:
         return self.size > 0 and len(self.seedable) > 0
 
+
 class Game:
     def __init__(self):
         self.day = -1

@@ -23,12 +23,14 @@ class Cell:
         self.tree = None
         self.shadow = 0
         self.next_shadow = 0
+        self.area = defaultdict(lambda:[])
     
     def __repr__(self) -> str:
         return f"@{self.id}({self.richness},{self.shadow})"
     
     def init(self, cells: List["Cell"]):
         self.neighbors = [cells[i] if i >= 0 else None for i in self.neighbors_raw]
+        self.area = {i: self.compute_area(i, []) for i in range(4)}
     
     @property
     def has_tree(self) -> bool:
@@ -54,14 +56,14 @@ class Cell:
             target = target.neighbors[(sun_dir + 1) % 6]
             remaining -= 1
     
-    def area(self, size: int, included: List["Cell"]) -> List["Cell"]:
+    def compute_area(self, size: int, included: List["Cell"]) -> List["Cell"]:
         if size == 0:
             return []
         output = []
         for neighbor in self.neighbors:
             if neighbor is not None and neighbor not in included:
                 included += [neighbor]
-                output += [neighbor] + neighbor.area(size - 1, included)
+                output += [neighbor] + neighbor.compute_area(size - 1, included)
         return output
 
 
@@ -74,6 +76,7 @@ class Tree:
         self.is_dormant = args[3] == "1"
         self.cell.update(sun_dir, self)
         self.__seedable = None
+        self.__seedable_next = None
         old_self = [tree for tree in last_trees if tree.id == self.id]
         if len(old_self) == 0:
             self.history = [self.size]
@@ -115,7 +118,7 @@ class Tree:
             if self.size == 0:
                 self.__seedable = []
             else:
-                area = self.cell.area(self.size, [])
+                area = self.cell.area[self.size]
                 self.__seedable = sorted(
                     (cell for cell in area if not cell.has_tree and cell.richness > 0),
                     key=lambda cell:cell.richness,
@@ -124,8 +127,25 @@ class Tree:
         return self.__seedable
     
     @property
+    def seedable_next(self) -> List[Cell]:
+        if self.__seedable_next is None:
+            if self.size == 0:
+                self.__seedable_next = []
+            elif self.size == 3:
+                self.__seedable_next = self.seedable
+            else:
+                area = self.cell.area[self.size + 1]
+                self.__seedable_next = sorted(
+                    (cell for cell in area if not cell.has_tree and cell.richness > 0),
+                    key=lambda cell:cell.richness,
+                    reverse=True
+                )
+        return self.__seedable_next
+    
+    @property
     def can_seed(self) -> bool:
-        return self.size > 0 and len(self.seedable) > 0
+        # do not seed if next has better seedable (firstly caused by bug in .area)
+        return self.size > 0 and len(self.seedable) > 0 and len(self.seedable_next) > 0 and self.seedable_next[0].richness <= self.seedable[0].richness
 
 
 class Game:
@@ -183,29 +203,27 @@ class Game:
             return "COMPLETE", completable[0].id
 
         if self.day != MAX_DAY:
-            if self.grow_count < 5:
-                # grow
+            # grow
 
-                growable = [tree for tree in available if not tree.grown and self.sun >= self.price(tree)]
-                growable.sort(key=lambda tree:tree.gscore, reverse=True)
+            growable = [tree for tree in available if not tree.grown and self.sun >= self.price(tree)]
+            growable.sort(key=lambda tree:tree.gscore, reverse=True)
 
-                debug("growable", growable)
+            debug("growable", growable)
 
-                if len(growable) > 0:
-                    self.grow_count += 1
-                    return "GROW", growable[0].id
+            if len(growable) > 0:
+                self.grow_count += 1
+                return "GROW", growable[0].id
 
-            if self.seed_count < 3 and self.day > 0:
-                # seed
+            # seed
 
-                seeding = [tree for tree in available if tree.can_seed]
-                seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
+            seeding = [tree for tree in available if tree.can_seed]
+            seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
 
-                debug("seeding", seeding)
+            debug("seeding", seeding)
 
-                if len(seeding) > 0 and self.sun >= self.tree_count[0]:
-                    self.seed_count += 1
-                    return "SEED", seeding[0].id, seeding[0].seedable[0].id
+            if len(seeding) > 0 and self.sun >= self.tree_count[0]:
+                self.seed_count += 1
+                return "SEED", seeding[0].id, seeding[0].seedable[0].id
 
         return "WAIT", "würst"
 

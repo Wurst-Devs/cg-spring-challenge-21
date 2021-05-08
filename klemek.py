@@ -1,20 +1,21 @@
 import sys
 from types import GeneratorType
+from typing import List
+from collections import defaultdict
 
-MAX_DAY = 23 # WOOD 2 => 0 / WOOD 1 => 5 / ONWARD => 23
-ALLOWED = [
-    "GROW",  # WOOD 1
-    "SEED",  # BRONZE
-]
+MAX_DAY = 23
+
+MAX_TREE_DAYS = {1:MAX_DAY, 2:10, 3:1}
+
+# UTILS
 
 def debug(*values, end = '\n'):
-    values = [tuple(v) if isinstance(v, GeneratorType) else v for v in values]
     print(*values, file=sys.stderr, end=end, flush=True)
 
 # CLASSES
 
 class Cell:
-    def __init__(self, *args):
+    def __init__(self, *args: str):
         self.id = int(args[0])
         self.richness = int(args[1])
         self.neighbors_raw = map(int, args[2:])
@@ -23,14 +24,14 @@ class Cell:
         self.shadow = 0
         self.next_shadow = 0
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"@{self.id}({self.richness},{self.shadow})"
     
-    def init(self, cells):
+    def init(self, cells: List["Cell"]):
         self.neighbors = [cells[i] if i >= 0 else None for i in self.neighbors_raw]
     
     @property
-    def has_tree(self):
+    def has_tree(self) -> bool:
         return self.tree is not None
 
     def reset(self):
@@ -38,7 +39,7 @@ class Cell:
         self.shadow = 0
         self.next_shadow = 0
     
-    def update(self, sun_dir, tree):
+    def update(self, sun_dir: int, tree: "Tree"):
         self.tree = tree
         remaining = tree.size
         target = self.neighbors[sun_dir]
@@ -53,8 +54,8 @@ class Cell:
             target = target.neighbors[(sun_dir + 1) % 6]
             remaining -= 1
     
-    def area(self, size, included):
-        if size < 0:
+    def area(self, size: int, included: List["Cell"]) -> List["Cell"]:
+        if size == 0:
             return []
         output = []
         for neighbor in self.neighbors:
@@ -65,20 +66,12 @@ class Cell:
 
 
 class Tree:
-    count = {i:0 for i in range(4)}
-    nutrients = 20
-
-    def reset_count():
-        Tree.count = {i:0 for i in range(4)}
-
-    def __init__(self, cells, last_trees, turn_start, sun_dir, *args):
+    def __init__(self, cells: List[Cell], last_trees: List["Tree"], turn_start: bool, sun_dir: int, *args: str):
         self.id = int(args[0])
         self.cell = cells[self.id]
         self.size = int(args[1])
         self.is_mine = args[2] == "1"
         self.is_dormant = args[3] == "1"
-        if self.is_mine:
-            Tree.count[self.size] += 1
         self.cell.update(sun_dir, self)
         self.__seedable = None
         old_self = [tree for tree in last_trees if tree.id == self.id]
@@ -90,38 +83,34 @@ class Tree:
             self.history = old_self[0].history
             
         
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self.size == 3:
-            return f"T{self.cell}=>{self.size}/{self.score}"
+            return f"T{self.cell}=>{self.size}"
         else:
-            return f"T{self.cell}=>{self.size}/{self.score}/{self.price}/{self.gscore}"
+            return f"T{self.cell}=>{self.size}/{self.gscore}"
 
     @property
-    def score(self):
-        return Tree.nutrients + 2 * (self.cell.richness - 1)
-    
-    @property
-    def price(self):
-        return pow(2, self.size + 1) - 1 + Tree.count[self.size + 1]
-
-    @property
-    def gscore(self):
+    def gscore(self) -> int:
         return self.cell.richness + (self.size + 1) * 10
     
     @property
-    def days(self):
+    def grown(self) -> bool:
+        return self.size == 3
+
+    @property
+    def days(self) -> int:
         return self.history.count(self.size)
     
     @property
-    def max_days(self):
-        return (3 - self.cell.richness) * 4 + 1
+    def max_days(self) -> int:
+        return MAX_TREE_DAYS[self.cell.richness]
 
     @property
-    def next_sun(self):
+    def next_sun(self) -> int:
         return self.size if self.cell.next_shadow < self.size else 0
     
     @property
-    def seedable(self):
+    def seedable(self) -> List[Cell]:
         if self.__seedable is None:
             if self.size == 0:
                 self.__seedable = []
@@ -135,78 +124,121 @@ class Tree:
         return self.__seedable
     
     @property
-    def can_seed(self):
+    def can_seed(self) -> bool:
         return self.size > 0 and len(self.seedable) > 0
+
+
+class Game:
+    def __init__(self):
+        self.day = -1
+        self.trees = []
+        self.booked = []
+    
+    def input_cells(self, raw_cells: List[List[str]]):
+        self.cells = [Cell(*line) for line in raw_cells]
+        for cell in self.cells:
+            cell.init(self.cells)
+    
+    def input_turn_start(self, day: int, nutrients: int):
+        self.turn_start = day != self.day
+        self.day = day
+        self.sun_dir = day % 6
+        self.nutrients = nutrients
+        debug("nutrients", nutrients)
+    
+    def input_player(self, *args: List[str]):
+        self.sun, self.score = map(int, args)
+    
+    def input_opponent(self, *args: List[str]):
+        self.opp_sun, self.opp_score, self.opp_is_waiting = map(int, args)
+        self.opp_is_waiting = self.opp_is_waiting == 1
+
+    def input_trees(self, raw_trees: List[List[str]]):
+        for cell in self.cells:
+            cell.reset()
+        last_trees = self.trees
+        self.trees = [Tree(self.cells, last_trees, self.turn_start, self.sun_dir, *line) for line in raw_trees]
+        self.tree_count = defaultdict(lambda:0)
+        for tree in self.trees:
+            self.tree_count[tree.size] += 1
+    
+    def price(self, tree: Tree):
+        return pow(2, tree.size + 1) - 1 + self.tree_count[tree.size + 1]
+
+    def output_move(self):
+        mine = [tree for tree in self.trees if tree.is_mine]
+        available = [tree for tree in mine if not tree.is_dormant]
+
+        if self.turn_start:
+            self.moves = []
+            self.booked = []
+            self.rem_sun = self.sun
+
+            debug("mine", mine)
+
+            # complete
+
+            completable = [tree for tree in available if tree.grown and (tree.days > tree.max_days or self.day == MAX_DAY)]
+            completable.sort(key=lambda tree:tree.cell.richness, reverse=True)
+
+            debug("completable", completable)
+
+            while self.rem_sun >= 4 and len(completable) > 0:
+                self.rem_sun -= 4
+                self.booked += [completable[0].id]
+                self.moves += [("COMPLETE", completable.pop(0).id)]
+
+            if self.day != MAX_DAY:
+                # grow
+
+                growable = [tree for tree in available if not tree.grown and self.rem_sun >= self.price(tree)]
+                growable.sort(key=lambda tree:tree.gscore, reverse=True)
+
+                debug("growable", growable)
+
+                grow_count = 0
+
+                while len(growable) > 0 and self.rem_sun >= self.price(growable[0]) + (self.tree_count[0] if grow_count > 1 else 0):
+                    self.rem_sun -= self.price(growable[0])
+                    self.booked += [growable[0].id]
+                    grow_count += 1
+                    self.moves += [("GROW", growable.pop(0).id)]
+                
+            debug("booked", self.booked)
+            debug("rem_sun", self.rem_sun)
+
+        available = [tree for tree in available if not tree.id in self.booked]
+
+        # seed
+
+        seeding = [tree for tree in available if tree.can_seed]
+        seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
+
+        debug("seeding", seeding)
+
+        debug("moves", self.moves)
+
+        if self.day != MAX_DAY and len(seeding) > 0 and self.rem_sun >= self.tree_count[0]:
+            self.rem_sun -= self.tree_count[0]
+            return "SEED", seeding[0].id, seeding[0].seedable[0].id
+        elif len(self.moves) > 0:
+            return self.moves.pop(0)
+        else:
+            return "WAIT", "würst"
 
 
 
 # INIT
 
-cells = [Cell(*input().split()) for _ in range(int(input()))]
+game = Game()
 
-for cell in cells:
-    cell.init(cells)
-
-day = -1
-trees = []
+game.input_cells(input().split() for _ in range(int(input())))
 
 # GAME LOOP
 while True:
-    last_day = day
-    day = int(input())
-    turn_start = day != last_day
-
-    sun_dir = day % 6
-
-    Tree.reset_count()
-    Tree.nutrients = int(input())
-
-    debug("nutrients:", Tree.nutrients)
-
-    sun, score = [int(i) for i in input().split()]
-    opp_sun, opp_score, opp_is_waiting = map(int, input().split())
-
-    for cell in cells:
-        cell.reset()
-    
-    last_trees = trees
-    trees = [Tree(cells, last_trees, turn_start, sun_dir, *input().split()) for _ in range(int(input()))]
-
+    game.input_turn_start(int(input()), int(input()))
+    game.input_player(*input().split())
+    game.input_opponent(*input().split())
+    game.input_trees(input().split() for _ in range(int(input())))
     [input() for _ in range(int(input()))]  # possible actions ignored
-
-    mine = [tree for tree in trees if tree.is_mine]
-    available = [tree for tree in mine if not tree.is_dormant]
-    dormant = [tree for tree in mine if tree.is_dormant]
-
-    debug("mine", mine)
-
-    # complete
-
-    completable = [tree for tree in available if tree.size == 3 and (tree.days > tree.max_days or day == MAX_DAY)]
-    completable.sort(key=lambda tree:tree.score, reverse=True)
-
-    debug("completable", completable)
-
-    # grow
-
-    growable = [tree for tree in available if tree.size != 3 and sun >= tree.price]
-    growable.sort(key=lambda tree:tree.gscore, reverse=True)
-
-    debug("growable", growable)
-
-    # seed
-
-    seeding = [tree for tree in available if tree.can_seed]
-    seeding.sort(key=lambda tree:tree.seedable[0].richness, reverse=True)
-
-    debug("seeding", seeding)
-
-    if len(completable) > 0 and sun >= 4:
-        print("COMPLETE", completable[0].id)
-    elif "GROW" in ALLOWED and day != MAX_DAY and len(growable) > 0:
-        print("GROW", growable[0].id)
-    elif "SEED" in ALLOWED and day != MAX_DAY and len(seeding) > 0 and sun >= Tree.count[0]:
-        print("SEED", seeding[0].id, seeding[0].seedable[0].id)
-    else:
-        # GROW cellIdx | SEED sourceIdx targetIdx | COMPLETE cellIdx | WAIT <message>
-        print("WAIT", "würst")
+    print(*game.output_move())

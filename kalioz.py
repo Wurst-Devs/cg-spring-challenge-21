@@ -141,31 +141,55 @@ class Forest:
           return True
     return False
 
+  def impact_shadow(self, case, day, size=3):
+    """return the impact of the shadow on a given day. positive number means it will impact more the ennemy than us."""
+    output = 0
+    cases_impacted = self.get_cases_shadow(case, day, size)
+    for case in cases_impacted:
+      if case.index in self.tree_by_cell_id:
+        tree = self.tree_by_cell_id[case.index]
+        output+= -2 if tree.is_mine else 1 # twice the impact if this is our tree as the shadow would go both ways
+    
+    return output
+  
+  def impact_shadow_seed(self, case, day):
+    """return the impact of the expected shadow of a seed planted on a given day. positive number means it will impact more the ennemy than us"""
+    output = 0
+    # direct future
+    for day_delta in range(2,2+3):# calculate first for when the tree will grow
+      output+= self.impact_shadow(case, day + day_delta, size=day_delta-1) / day_delta # the more the result is in the future, the less it should be impactful
+    
+    # full turn
+    for i in range(6):
+      output+= self.impact_shadow(case, i, size=3) / 3
+    
+    return output
+
+
   def _case_get_seed_value(self, case):
     """get the value of the case"""
-    # value : richness**2 + shadow impact + is_shadowed + near higher cases
+    # value : richness + shadow impact + is_shadowed + near higher cases
+    # in current configuration, ombrage > richness > neighbors
     if case.richness == 0:
       return None
-    value = case.richness ** 2 # 1, 4, 9
+    value = case.richness # 1, 2, 3
 
-    # calculate cast shadow for the next 3 days
-    for i in range(1, 4):
-      impacted_cases = self.get_cases_shadow(case, self.day + i, size=i)
-      for impacted_case in impacted_cases:
-        if impacted_case.index in self.tree_by_cell_id:
-          tree = self.tree_by_cell_id[impacted_case.index]
-          # TODO calculate impact in function of tree size and future days
-          value+= -1 if tree.is_mine else 2
+    # calculate shadow impact
+    value+=2 * self.impact_shadow_seed(case, self.day)
     
     # calculate ombrage for the next 3 days
     for i in range(2, 5):
       if self.is_shadowed(case, self.day+i):
-        value-=1
+        value-=1/i
     
     # check if the case is near a case with high richness
     for neigh in case.neighbors:
       if neigh != None:
-        value+=max(neigh.richness-1, 0)
+        value+=max(neigh.richness-1, 0)/(2*6) # can add a max of +1, this is just to differentiate some cases
+
+        if neigh.index in self.tree_by_cell_id: # calculate, for a 2nd time, if there are tree near this seed.
+          tree = self.tree_by_cell_id[neigh.index]
+          value+= tree.size if not tree.is_mine else - tree.size * neigh.richness
 
     return value
 
@@ -176,20 +200,16 @@ class Forest:
     # if the seed can in the next 3 turns grow and cast shadow on opponents tree, grant +2 interest by impacted tree
     # if the seed can in the next 3 turns grow and cast shadow on my tree, grant +1 interest by tree (still useful to seed here as it would prevent the opponent from doing so)
     # if a tree on a N richness cell can seed a N-1 richness cell, grant -0.5 interest by reichness difference
-    seed_to_plant = (None, None, -50) #(tree, cell_to_seed, interest)
+    seed_to_plant = (None, None, 3) #(tree, cell_to_seed, interest) - interest starts at 3 to prevent bad placements
     for tree in self.trees_mine_active:
       neighbors = list(itertools.chain.from_iterable(tree.cell.neighbors_by_size[i] for i in range(1, tree.size+1)))
       for cell in neighbors:
         if cell.richness != 0 and cell.index not in self.tree_by_cell_id:
           cell_value = self._case_get_seed_value(cell)
-          if cell.richness >= tree.cell.richness:
-            cell_value+= 2 * (cell.richness - tree.cell.richness)
-          else:
-            cell_value+= - 0.5 * (cell.richness - tree.cell.richness)
-
+          
           if cell_value > seed_to_plant[2]:
             seed_to_plant = (tree, cell, cell_value)
-    
+    debug("cell_to_plant", seed_to_plant)
     return seed_to_plant[0:2]
     
   def find_tree_to_grow(self, min_size = 0):
@@ -246,9 +266,22 @@ class Forest:
       if not tree.is_dormant:
         score = tree.get_score(self.nutrients)
         is_shadowed_day_1 = self.is_shadowed(tree.cell, self.day+1)
+        is_shadowed_day_2 = self.is_shadowed(tree.cell, self.day+2)
+        is_shadowed_day_3 = self.is_shadowed(tree.cell, self.day+3)
+        if len(self.trees_mine_by_size[3]) <= self.min_level_3 + 1:  # only cut if the tree will have a really bad future production
+          only_cut_if_shadowed_condition = is_shadowed_day_1 and (is_shadowed_day_2 and is_shadowed_day_3)
+        elif len(self.trees_mine_by_size[3]) >= self.max_level_3-1:
+          only_cut_if_shadowed_condition = is_shadowed_day_1 # cut if it is menaced in the direct next day
+        else: # only cut if the tree will have a somewhat bad rendement
+          only_cut_if_shadowed_condition = is_shadowed_day_1 and (is_shadowed_day_2 or is_shadowed_day_3)
+
         if is_shadowed_day_1: # evacute ombraged tree first
           score+=10
-        if score > best and ((not only_cut_if_shadowed) + only_cut_if_shadowed * is_shadowed_day_1):
+        if is_shadowed_day_2:
+          score+=5
+        if is_shadowed_day_3:
+          score+=1
+        if score > best and ((not only_cut_if_shadowed) + only_cut_if_shadowed * is_shadowed_day_1 * is_shadowed_day_2):
           best = score
           output = tree
 
@@ -266,7 +299,10 @@ class Forest:
 
     day_delay = self.day_max - self.day
     minimum_size_grow = 3 - day_delay
-    can_plant_seed = day_delay > 3 and len(self.trees_mine_by_size[0]) < self.max_seeds and self.seed_cost() < self.sun
+    can_plant_seed = day_delay > 1 and len(self.trees_mine_by_size[0]) < self.max_seeds and self.seed_cost() <= self.sun
+
+    if self.day == 0:
+      return "WAIT first_day"
 
     if self.day < 8:
       # grow tree if possible
